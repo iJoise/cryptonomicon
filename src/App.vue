@@ -1,5 +1,31 @@
 <template>
   <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
+    <div
+      v-show="isLoading"
+      class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center"
+    >
+      <svg
+        class="animate-spin -ml-1 mr-3 h-12 w-12 text-white"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"
+        ></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        ></path>
+      </svg>
+    </div>
+
     <div class="container">
       <section>
         <div class="flex">
@@ -10,41 +36,35 @@
             <div class="mt-1 relative rounded-md shadow-md">
               <input
                 v-model="ticker"
-                v-on:keydown.enter="add"
+                v-on:keydown.enter="add(ticker)"
                 type="text"
                 name="wallet"
+                autocomplete="off"
                 id="wallet"
                 class="block w-full pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
                 placeholder="Например DOGE"
               />
             </div>
-            <div class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
+            <div
+              v-if="searchCurrency.length"
+              class="flex bg-white p-1 rounded-md shadow-md flex-wrap"
+            >
               <span
+                v-for="currency in searchCurrency"
+                :key="currency"
+                @click="add(currency)"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
               >
-                BTC
-              </span>
-              <span
-                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
-              >
-                DOGE
-              </span>
-              <span
-                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
-              >
-                BCH
-              </span>
-              <span
-                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
-              >
-                CHD
+                {{ currency }}
               </span>
             </div>
-            <div class="text-sm text-red-600">Такой тикер уже добавлен</div>
+            <div v-if="isError" class="text-sm text-red-600">
+              Такой тикер уже добавлен
+            </div>
           </div>
         </div>
         <button
-          @click="add"
+          @click="add(ticker)"
           type="button"
           class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
         >
@@ -153,26 +173,37 @@ export default {
   data() {
     return {
       ticker: "",
-      tickers: [],
       sel: null,
-      graph: []
+      isError: false,
+      isLoading: false,
+      tickers: [],
+      graph: [],
+      allCurrency: [],
+      searchCurrency: []
     };
   },
 
   methods: {
-    add() {
+    add(value) {
+      const findMatchesForTickers = tickerValue => {
+        return this.tickers.some(ticker => ticker.name === tickerValue);
+      };
+
+      if (findMatchesForTickers(value)) {
+        this.isError = true;
+        return;
+      }
+
       const currentTicker = {
-        name: this.ticker,
+        name: value ? value : this.ticker,
         price: "-"
       };
 
       this.tickers.push(currentTicker);
-      const VUE_APP_CRYPTO_KEY =
-        "d3c888c6b4ff5819b803f8dbdc37914dd2c088c2db9a8459ecfbb607d7f196b4";
-      const baseUrl = "https://min-api.cryptocompare.com/data/";
+
       setInterval(async () => {
         const f = await fetch(
-          `${baseUrl}price?fsym=${currentTicker.name}&tsyms=USD&api_key=${VUE_APP_CRYPTO_KEY}`
+          `${process.env.VUE_APP_BASE_URL}price?fsym=${currentTicker.name}&tsyms=USD&api_key=${process.env.VUE_APP_CRYPTO_KEY}`
         );
         const data = await f.json();
         this.tickers.find(ticker => ticker.name === currentTicker.name).price =
@@ -182,7 +213,9 @@ export default {
           this.graph.push(data.USD);
         }
       }, 3000);
+
       this.ticker = "";
+      this.searchCurrency = [];
     },
 
     select(ticker) {
@@ -201,6 +234,36 @@ export default {
         price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
       );
     }
+  },
+
+  watch: {
+    ticker(newValue) {
+      this.searchCurrency = [];
+
+      if (this.isError) this.isError = false;
+
+      if (newValue.length > 1) {
+        const newCurrency = this.allCurrency
+          .filter(currency => {
+            return currency.toLowerCase().includes(newValue.toLowerCase());
+          })
+          .sort((a, b) => a.length - b.length)
+          .slice(0, 4);
+        this.searchCurrency.push(...newCurrency);
+      } else {
+        this.searchCurrency = [];
+      }
+    }
+  },
+
+  created: async function () {
+    this.isLoading = true;
+    const result = await fetch(
+      `${process.env.VUE_APP_BASE_URL}all/coinlist?summary=true`
+    );
+    const { Data } = await result.json();
+    this.allCurrency.push(...Object.keys(Data));
+    this.isLoading = false;
   }
 };
 </script>
