@@ -184,6 +184,21 @@ export default {
   },
 
   methods: {
+    subscribeToUpdates(tickerName) {
+      setInterval(async () => {
+        const f = await fetch(
+          `${process.env.VUE_APP_BASE_URL}price?fsym=${tickerName}&tsyms=USD&api_key=${process.env.VUE_APP_CRYPTO_KEY}`
+        );
+        const data = await f.json();
+        this.tickers.find(ticker => ticker.name === tickerName).price =
+          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+
+        if (this.sel?.name === tickerName) {
+          this.graph.push(data.USD);
+        }
+      }, 3000);
+    },
+
     add(value) {
       const findMatchesForTickers = tickerValue => {
         return this.tickers.some(ticker => ticker.name === tickerValue);
@@ -201,18 +216,9 @@ export default {
 
       this.tickers.push(currentTicker);
 
-      setInterval(async () => {
-        const f = await fetch(
-          `${process.env.VUE_APP_BASE_URL}price?fsym=${currentTicker.name}&tsyms=USD&api_key=${process.env.VUE_APP_CRYPTO_KEY}`
-        );
-        const data = await f.json();
-        this.tickers.find(ticker => ticker.name === currentTicker.name).price =
-          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+      localStorage.setItem("cryptonomicon-item", JSON.stringify(this.tickers));
 
-        if (this.sel?.name === currentTicker.name) {
-          this.graph.push(data.USD);
-        }
-      }, 3000);
+      this.subscribeToUpdates(currentTicker.name);
 
       this.ticker = "";
       this.searchCurrency = [];
@@ -258,11 +264,19 @@ export default {
 
   created: async function () {
     this.isLoading = true;
+
     const result = await fetch(
       `${process.env.VUE_APP_BASE_URL}all/coinlist?summary=true`
     );
     const { Data } = await result.json();
     this.allCurrency.push(...Object.keys(Data));
+
+    const tickersData = localStorage.getItem("cryptonomicon-item");
+    if (tickersData) {
+      this.tickers = JSON.parse(tickersData);
+      this.tickers.forEach(ticker => this.subscribeToUpdates(ticker.name));
+    }
+
     this.isLoading = false;
   }
 };
