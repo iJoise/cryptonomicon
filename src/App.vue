@@ -132,7 +132,7 @@
                 {{ t.name }} - USD
               </dt>
               <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{ t.price }}
+                {{ formatPrice(t.price) }}
               </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
@@ -201,6 +201,8 @@
 </template>
 
 <script>
+import { subscribeToTickers, unsubscribeToTicker } from "./api/api";
+
 export default {
   name: "App",
 
@@ -262,31 +264,30 @@ export default {
   },
 
   methods: {
-    subscribeToUpdates(tickerName) {
-      setInterval(async () => {
-        const f = await fetch(
-          `${process.env.VUE_APP_BASE_URL}price?fsym=${tickerName}&tsyms=USD&api_key=${process.env.VUE_APP_CRYPTO_KEY}`
-        );
-        const data = await f.json();
-        this.tickers.find(ticker => ticker.name === tickerName).price =
-          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+    updateTicker(tickerName, price) {
+      this.tickers
+        .filter(t => t.name === tickerName)
+        .forEach(t => {
+          if (t === this.selectedTicker) {
+            this.graph.push(price);
+          }
+          t.price = price;
+        });
+    },
 
-        if (this.selectedTicker?.name === tickerName) {
-          this.graph.push(data.USD);
-        }
-      }, 5000);
+    formatPrice(price) {
+      if (price === "-") {
+        return price;
+      }
+      return price > 1 ? price.toFixed(2) : price.toPrecision(2);
     },
 
     add(value) {
-      if (!value.length) {
-        this.isError = true;
-        return;
-      }
       const findMatchesForTickers = tickerValue => {
         return this.tickers.some(ticker => ticker.name === tickerValue);
       };
 
-      if (findMatchesForTickers(value)) {
+      if (findMatchesForTickers(value) || !value.length) {
         this.isError = true;
         return;
       }
@@ -298,11 +299,12 @@ export default {
 
       this.tickers = [...this.tickers, currentTicker];
 
-      this.subscribeToUpdates(currentTicker.name);
-
       this.ticker = "";
       this.filter = "";
       this.searchCurrency = [];
+      subscribeToTickers(currentTicker.name, newPrice =>
+        this.updateTicker(currentTicker.name, newPrice)
+      );
     },
 
     select(ticker) {
@@ -314,6 +316,7 @@ export default {
       if (this.selectedTicker === tickerToRemove) {
         this.selectedTicker = null;
       }
+      unsubscribeToTicker(tickerToRemove.name);
     }
   },
 
@@ -393,9 +396,14 @@ export default {
     this.allCurrency.push(...Object.keys(Data));
 
     const tickersData = localStorage.getItem("cryptonomicon-item");
+
     if (tickersData) {
       this.tickers = JSON.parse(tickersData);
-      this.tickers.forEach(ticker => this.subscribeToUpdates(ticker.name));
+      this.tickers.forEach(ticker => {
+        subscribeToTickers(ticker.name, newPrice =>
+          this.updateTicker(ticker.name, newPrice)
+        );
+      });
     }
 
     this.isLoading = false;
