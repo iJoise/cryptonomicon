@@ -1,20 +1,31 @@
-const BASE_URL = process.env.VUE_APP_BASE_URL;
 const API_KEY = process.env.VUE_APP_CRYPTO_KEY;
 const SOCKET_URL = process.env.VUE_APP_SOCKET_URL;
 
 const AGGREGATE_INDEX = "5";
+const TO_MANY_SOCKETS_CLIENT = "429";
 
 const tickersHandlers = new Map();
 const socket = new WebSocket(`${SOCKET_URL}/v2?api_key=${API_KEY}`);
 
-socket.addEventListener("message", e => {
-  const { TYPE: type, FROMSYMBOL: currency, PRICE: newPrice } = JSON.parse(e.data);
-  if (type !== AGGREGATE_INDEX || newPrice === undefined) {
-    return;
-  }
+const bc = new BroadcastChannel("tickers");
 
+function setTickers(currency, newPrice) {
   const handlers = tickersHandlers.get(currency) ?? [];
   handlers.forEach(fn => fn(newPrice));
+}
+
+socket.addEventListener("message", e => {
+  const { TYPE: type, FROMSYMBOL: currency, PRICE: newPrice } = JSON.parse(e.data);
+  if (type === AGGREGATE_INDEX && newPrice !== undefined) {
+    setTickers(currency, newPrice);
+    bc.postMessage(JSON.stringify({ currency, newPrice }));
+  }
+  if (type === TO_MANY_SOCKETS_CLIENT) {
+    bc.onmessage = e => {
+      const { currency, newPrice } = JSON.parse(e.data);
+      setTickers(currency, newPrice);
+    };
+  }
 });
 
 function sendToWebSocket(message) {
