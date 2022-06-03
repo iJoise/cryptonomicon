@@ -31,7 +31,7 @@
         <div v-if="isError" class="text-sm text-red-600">Такой тикер уже добавлен</div>
       </div>
     </div>
-    <add-button @click="add(ticker)" type="button" />
+    <add-button @click="add(ticker)" :disabled="disabledAddButton" type="button" />
   </section>
 </template>
 
@@ -46,7 +46,7 @@ export default {
   props: {
     tickers: {
       type: Array,
-      requierd: true
+      required: true
     }
   },
 
@@ -59,8 +59,15 @@ export default {
       ticker: "",
       isError: false,
       searchCurrency: [],
-      allCurrency: []
+      allCurrency: [],
+      disabled: true
     };
+  },
+
+  computed: {
+    disabledAddButton() {
+      return this.ticker.length === 0;
+    }
   },
 
   methods: {
@@ -69,14 +76,16 @@ export default {
         return;
       }
       const findMatchesForTickers = tickerValue => {
-        return this.tickers.some(ticker => ticker.name === tickerValue);
+        return this.tickers.some(
+          ticker => ticker.name.toUpperCase() === tickerValue.toUpperCase()
+        );
       };
       if (findMatchesForTickers(value)) {
         this.isError = true;
         return;
       }
 
-      this.$emit("add-ticker", this.ticker);
+      this.$emit("add-ticker", value.toUpperCase());
       this.ticker = "";
       this.searchCurrency = [];
     }
